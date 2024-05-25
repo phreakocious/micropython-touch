@@ -18,6 +18,7 @@ import framebuf
 import asyncio
 from drivers.boolpalette import BoolPalette
 
+
 # Portrait mode
 @micropython.viper
 def _lcopy(dest: ptr16, source: ptr8, lut: ptr16, length: int):
@@ -56,7 +57,6 @@ def _lscopy(dest: ptr16, source: ptr8, lut: ptr16, ch: int):
 
 
 class ILI9486(framebuf.FrameBuffer):
-
     lut = bytearray(32)
     COLOR_INVERT = 0
 
@@ -105,7 +105,8 @@ class ILI9486(framebuf.FrameBuffer):
         sleep_ms(100)
         self._wcmd(b"\x11")  # sleep out
         sleep_ms(20)
-        self._wcd(b"\x3a", b"\x55")  # interface pixel format
+        # self._wcd(b"\x3a", b"\x55")  # interface pixel format
+        self._wcd(b"\x3a", b"\x66")  # interface pixel format
         # Normally use defaults. This allows it to work on the Waveshare board with a
         # shift register. If size is not 320x480 assume no shift register.
         # Default column address start == 0, end == 0x13F (319)

@@ -28,7 +28,8 @@ pcs = Pin(TFT_CS_PIN, Pin.OUT, value=1)
 spi = SPI(1, 33_000_000, sck=Pin(TFT_SCK_PIN), mosi=Pin(TFT_MOSI_PIN), miso=Pin(TFT_MISO_PIN))
 # Precaution before instantiating framebuf
 gc.collect()
-ssd = SSD(spi, height=240, width=320, dc=pdc, cs=pcs, rst=prst, usd=True)
+ssd = SSD(spi, height=320, width=480, dc=pdc, cs=pcs, rst=prst, usd=False)
+# ssd.COLOR_INVERT = 0xFFFF
 from gui.core.tgui import Display, quiet
 
 # quiet()  # Comment this out for periodic free RAM messages
