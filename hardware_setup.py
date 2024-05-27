@@ -42,7 +42,8 @@ sspi = SoftSPI(
 
 tpad = XPT2046(sspi, Pin(TOUCH_IRQ_PIN), ssd)
 # To create a tpad.init line for your displays please read SETUP.md
-# tpad.init(240, 320, 151, 151, 4095, 4095, True, True, True)
+tpad.init(320, 480, 204, 156, 3825, 3900, True, False, True)
+
 
 # instantiate a Display
 display = Display(ssd, tpad)

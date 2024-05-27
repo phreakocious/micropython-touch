@@ -56,6 +56,32 @@ def _lscopy(dest: ptr16, source: ptr8, lut: ptr16, ch: int):
         height -= 1
 
 
+@micropython.viper
+def rgb565_to_rgb666(source: ptr16, dest: ptr8, length: int):
+    for i in range(0, length, 2):
+        # Extracting 16-bit RGB565 values
+        rgb565 = source[i] | (source[i + 1] << 8)
+
+        # Extracting RGB components
+        r5 = rgb565 & 0x1F
+        g6 = (rgb565 & (0x3F << 5)) >> 5
+        b5 = (rgb565 & (0x1F << 11)) >> 11
+
+        # # Convert to RGB666
+        # r6 = (r5 & 0x1F) << 3
+        # g6 = (g6 & 0x3F) << 2
+        # b6 = (b5 & 0x1F) << 3
+
+        r8 = (r5 * 527 + 23) >> 6
+        g8 = (g6 * 259 + 33) >> 6
+        b8 = (b5 * 527 + 23) >> 6
+
+        # Writing RGB666 to destination
+        dest[i * 3] = r8
+        dest[i * 3 + 1] = g8
+        dest[i * 3 + 2] = b8
+
+
 class ILI9486(framebuf.FrameBuffer):
     lut = bytearray(32)
     COLOR_INVERT = 0
@@ -90,6 +116,7 @@ class ILI9486(framebuf.FrameBuffer):
         self._mvb = memoryview(buf)
         super().__init__(buf, width, height, mode)  # Logical aspect ratio
         self._linebuf = bytearray(self._short * 2)
+        self._outbuf = bytearray(self._short * 3)
 
         # Hardware reset
         self._rst(0)
@@ -146,6 +173,7 @@ class ILI9486(framebuf.FrameBuffer):
         clut = ILI9486.lut
         lb = self._linebuf
         buf = self._mvb
+        ob = self._outbuf
         if self._spi_init:  # A callback was passed
             self._spi_init(self._spi)  # Bus may be shared
         self._wcmd(b"\x2c")  # WRITE_RAM
@@ -156,14 +184,16 @@ class ILI9486(framebuf.FrameBuffer):
             ht = self.height
             for start in range(0, wd * ht, wd):  # For each line
                 _lcopy(lb, buf[start:], clut, wd)  # Copy and map colors
-                self._spi.write(lb)
+                rgb565_to_rgb666(lb, ob, self._short)
+                self._spi.write(ob)
         else:  # Landscpe 264ms on RP2 120MHz, 30MHz SPI clock
             width = self.width
             wd = width - 1
             cargs = (self.height << 9) + (width << 18)  # Viper 4-arg limit
             for col in range(width):  # For each column of landscape display
                 _lscopy(lb, buf, clut, wd - col + cargs)  # Copy and map colors
-                self._spi.write(lb)
+                rgb565_to_rgb666(lb, ob, self._short)
+                self._spi.write(ob)
         self._cs(1)
 
     async def do_refresh(self, split=4):
@@ -173,6 +203,7 @@ class ILI9486(framebuf.FrameBuffer):
                 raise ValueError("Invalid do_refresh arg.")
             clut = ILI9486.lut
             lb = self._linebuf
+            ob = self._outbuf
             buf = self._mvb
             self._wcmd(b"\x2c")  # WRITE_RAM
             self._dc(1)
@@ -185,7 +216,8 @@ class ILI9486(framebuf.FrameBuffer):
                     self._cs(0)
                     for start in range(wd * line, wd * (line + lines), wd):  # For each line
                         _lcopy(lb, buf[start:], clut, wd)  # Copy and map colors
-                        self._spi.write(lb)
+                        rgb565_to_rgb666(lb, ob, self._short)
+                        self._spi.write(ob)
                     line += lines
                     self._cs(1)  # Allow other tasks to use bus
                     await asyncio.sleep_ms(0)
@@ -199,7 +231,8 @@ class ILI9486(framebuf.FrameBuffer):
                     self._cs(0)
                     for col in range(sc, ec, -1):  # For each column of landscape display
                         _lscopy(lb, buf, clut, col + cargs)  # Copy and map colors
-                        self._spi.write(lb)
+                        rgb565_to_rgb666(lb, ob, self._short)
+                        self._spi.write(ob)
                     sc -= lines
                     ec -= lines
                     self._cs(1)  # Allow other tasks to use bus
