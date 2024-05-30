@@ -56,35 +56,11 @@ def _lscopy(dest: ptr16, source: ptr8, lut: ptr16, ch: int):
         height -= 1
 
 
-@micropython.viper
-def rgb565_to_rgb666(source: ptr16, dest: ptr8, length: int):
-    for i in range(0, length, 2):
-        # Extracting 16-bit RGB565 values
-        rgb565 = source[i] | (source[i + 1] << 8)
-
-        # Extracting RGB components
-        r5 = rgb565 & 0x1F
-        g6 = (rgb565 & (0x3F << 5)) >> 5
-        b5 = (rgb565 & (0x1F << 11)) >> 11
-
-        # # Convert to RGB666
-        # r6 = (r5 & 0x1F) << 3
-        # g6 = (g6 & 0x3F) << 2
-        # b6 = (b5 & 0x1F) << 3
-
-        r8 = (r5 * 527 + 23) >> 6
-        g8 = (g6 * 259 + 33) >> 6
-        b8 = (b5 * 527 + 23) >> 6
-
-        # Writing RGB666 to destination
-        dest[i * 3] = r8
-        dest[i * 3 + 1] = g8
-        dest[i * 3 + 2] = b8
-
-
 class ILI9486(framebuf.FrameBuffer):
     lut = bytearray(32)
     COLOR_INVERT = 0
+    PIXFMT = b"\x55"  # 16-bit RGB565
+    POST_PROCESS = None  # This should reference a function if it's needed
 
     # Convert r, g, b in range 0-255 to a 16 bit colour value
     # LS byte goes into LUT offset 0, MS byte into offset 1
@@ -116,7 +92,7 @@ class ILI9486(framebuf.FrameBuffer):
         self._mvb = memoryview(buf)
         super().__init__(buf, width, height, mode)  # Logical aspect ratio
         self._linebuf = bytearray(self._short * 2)
-        self._outbuf = bytearray(self._short * 3)
+        self._outbuf = None  # Need to define for POST_PROCESS
 
         # Hardware reset
         self._rst(0)
@@ -132,8 +108,7 @@ class ILI9486(framebuf.FrameBuffer):
         sleep_ms(100)
         self._wcmd(b"\x11")  # sleep out
         sleep_ms(20)
-        # self._wcd(b"\x3a", b"\x55")  # interface pixel format
-        self._wcd(b"\x3a", b"\x66")  # interface pixel format
+        self._wcd(b"\x3a", self.PIXFMT)  # interface pixel format
         # Normally use defaults. This allows it to work on the Waveshare board with a
         # shift register. If size is not 320x480 assume no shift register.
         # Default column address start == 0, end == 0x13F (319)
@@ -168,12 +143,18 @@ class ILI9486(framebuf.FrameBuffer):
         self._spi.write(data)
         self._cs(1)
 
+    def _write_line(self):
+        if self.POST_PROCESS:
+            self.POST_PROCESS(self._linebuf, self._outbuf, self._short)
+            self._spi.write(self._outbuf)
+        else:
+            self._spi.write(self._linebuf)
+
     # @micropython.native  # Made almost no difference to timing
     def show(self):  # Physical display is in portrait mode
         clut = ILI9486.lut
         lb = self._linebuf
         buf = self._mvb
-        ob = self._outbuf
         if self._spi_init:  # A callback was passed
             self._spi_init(self._spi)  # Bus may be shared
         self._wcmd(b"\x2c")  # WRITE_RAM
@@ -184,16 +165,14 @@ class ILI9486(framebuf.FrameBuffer):
             ht = self.height
             for start in range(0, wd * ht, wd):  # For each line
                 _lcopy(lb, buf[start:], clut, wd)  # Copy and map colors
-                rgb565_to_rgb666(lb, ob, self._short)
-                self._spi.write(ob)
+                self._write_line()
         else:  # Landscpe 264ms on RP2 120MHz, 30MHz SPI clock
             width = self.width
             wd = width - 1
             cargs = (self.height << 9) + (width << 18)  # Viper 4-arg limit
             for col in range(width):  # For each column of landscape display
                 _lscopy(lb, buf, clut, wd - col + cargs)  # Copy and map colors
-                rgb565_to_rgb666(lb, ob, self._short)
-                self._spi.write(ob)
+                self._write_line()
         self._cs(1)
 
     async def do_refresh(self, split=4):
@@ -216,8 +195,7 @@ class ILI9486(framebuf.FrameBuffer):
                     self._cs(0)
                     for start in range(wd * line, wd * (line + lines), wd):  # For each line
                         _lcopy(lb, buf[start:], clut, wd)  # Copy and map colors
-                        rgb565_to_rgb666(lb, ob, self._short)
-                        self._spi.write(ob)
+                        self._write_line()
                     line += lines
                     self._cs(1)  # Allow other tasks to use bus
                     await asyncio.sleep_ms(0)
@@ -231,8 +209,7 @@ class ILI9486(framebuf.FrameBuffer):
                     self._cs(0)
                     for col in range(sc, ec, -1):  # For each column of landscape display
                         _lscopy(lb, buf, clut, col + cargs)  # Copy and map colors
-                        rgb565_to_rgb666(lb, ob, self._short)
-                        self._spi.write(ob)
+                        self._write_line()
                     sc -= lines
                     ec -= lines
                     self._cs(1)  # Allow other tasks to use bus
