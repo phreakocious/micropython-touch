@@ -1,53 +1,49 @@
-# gc9a01_ws_rp2040_touch.py
-# Driver for https://www.waveshare.com/wiki/RP2040-Touch-LCD-1.28
+TFT_MISO_PIN = 12
+TFT_MOSI_PIN = 13
+TFT_SCK_PIN = 14
+TFT_CS_PIN = 15
+TFT_DC_PIN = 21
+TFT_RST_PIN = 46
+TFT_BL_PIN = 47
 
-# Released under the MIT License (MIT). See LICENSE.
-# Copyright (c) 2024 Peter Hinch
-
-# Pinout (from Waveshare schematic)
-# Touch Controller
-# I2C SDA 6
-# I2C CLK 7
-# TP RST 22
-# TP INT 21
-
-# LCD
-# DC 8
-# CS 9
-# SCK 10
-# MOSI 11
-# MISO 12
-# RST 13
-# BL 25
+TOUCH_MISO_PIN = 7
+TOUCH_MOSI_PIN = 6
+TOUCH_SCK_PIN = 4
+TOUCH_CS_PIN = 5
+TOUCH_IRQ_PIN = 8
 
 
+from machine import Pin, SPI, SoftSPI
 import gc
-from machine import Pin, SPI, I2C
-from drivers.gc9a01.gc9a01_8_bit import GC9A01 as SSD
+from drivers.ili94xx.ili9488 import ILI9488 as SSD
 
-pdc = Pin(8, Pin.OUT, value=0)
-pcs = Pin(9, Pin.OUT, value=1)
-prst = Pin(13, Pin.OUT, value=1)
-pbl = Pin(25, Pin.OUT, value=1)
 
-gc.collect()  # Precaution before instantiating framebuf
+# Screen configuration
+# (Create and export an SSD instance)
+prst = Pin(TFT_RST_PIN, Pin.OUT, value=1)
+pdc = Pin(TFT_DC_PIN, Pin.OUT, value=0)
+pcs = Pin(TFT_CS_PIN, Pin.OUT, value=1)
 
-# Define the display
-# gc9a01 datasheet allows <= 100MHz
-spi = SPI(1, 33_000_000, sck=Pin(10), mosi=Pin(11), miso=Pin(12))
-ssd = SSD(spi, pcs, pdc, prst)  # Bool options lscape, usd, mirror
+# Use hardSPI (bus 1)
+spi = SPI(1, 33_000_000, sck=Pin(TFT_SCK_PIN), mosi=Pin(TFT_MOSI_PIN), miso=Pin(TFT_MISO_PIN))
+# Precaution before instantiating framebuf
+gc.collect()
+# SSD.COLOR_INVERT = 0xFFFF
+ssd = SSD(spi, height=320, width=480, dc=pdc, cs=pcs, rst=prst, usd=False)
 from gui.core.tgui import Display, quiet
 
-quiet()  # Comment this out for periodic free RAM messages
+# quiet()  # Comment this out for periodic free RAM messages
+from touch.xpt2046 import XPT2046
 
-# Touch configuration.
-from touch.cst816s import CST816S
+# Touch configuration
+sspi = SoftSPI(
+    mosi=Pin(TOUCH_MOSI_PIN), miso=Pin(TOUCH_MISO_PIN), sck=Pin(TOUCH_SCK_PIN)
+)  # 2.5MHz max
 
-pint = Pin(21, Pin.IN)  # Touch interrupt
-ptrst = Pin(22, Pin.OUT, value=1)  # Touch reset
-i2c = I2C(1, scl=Pin(7), sda=Pin(6), freq=100_000)
-tpad = CST816S(i2c, ptrst, pint, ssd)
+tpad = XPT2046(sspi, Pin(TOUCH_IRQ_PIN), ssd)
 # To create a tpad.init line for your displays please read SETUP.md
-# The following is consistent with the SSD constructor args above.
-tpad.init(240, 240, 0, 0, 240, 240, False, True, True)
+tpad.init(320, 480, 204, 156, 3825, 3900, True, False, True)
+
+
+# instantiate a Display
 display = Display(ssd, tpad)
