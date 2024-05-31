@@ -25,7 +25,7 @@ pdc = Pin(TFT_DC_PIN, Pin.OUT, value=0)
 pcs = Pin(TFT_CS_PIN, Pin.OUT, value=1)
 
 # Use hardSPI (bus 1)
-spi = SPI(1, 33_000_000, sck=Pin(TFT_SCK_PIN), mosi=Pin(TFT_MOSI_PIN), miso=Pin(TFT_MISO_PIN))
+spi = SPI(1, 60_000_000, sck=Pin(TFT_SCK_PIN), mosi=Pin(TFT_MOSI_PIN), miso=Pin(TFT_MISO_PIN))
 # Precaution before instantiating framebuf
 gc.collect()
 # SSD.COLOR_INVERT = 0xFFFF
